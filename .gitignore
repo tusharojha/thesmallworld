@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+node_modules/
+.cache/
+.claude/
+report_*.md
+report_*.pptx
