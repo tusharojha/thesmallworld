@@ -835,7 +835,7 @@ function App() {
   const DEFAULTS = /*EDITMODE-BEGIN*/{
     "palette": "earth",
     "bg": "cream",
-    "videoUrl": "",
+    "videoUrl": "https://youtu.be/SWlYoP_6iGs",
     "margins": "on"
   }/*EDITMODE-END*/;
   const [cfg, setCfg] = useState(DEFAULTS);
