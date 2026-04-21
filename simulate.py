@@ -24,7 +24,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-load_dotenv()
+load_dotenv(".env")
 
 console = Console()
 
@@ -446,12 +446,7 @@ def _check_env():
         sys.exit(1)
 
 
-def _parse_args():
-    parser = argparse.ArgumentParser(
-        description="The Small World — current-state-grounded decision intelligence engine",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
+def _add_run_args(parser):
     parser.add_argument("--theory", "-t", required=True,
                         help='The policy, market, infrastructure, or geopolitical shock to simulate')
     parser.add_argument("--steps", "-s", type=int, default=10,
@@ -460,10 +455,12 @@ def _parse_args():
                         help="Max parallel LLM calls (default: 20)")
     parser.add_argument("--output", "-o", default=None,
                         help="Output file path (default: report_TIMESTAMP.md)")
+    parser.add_argument("--artifact-output", default=None,
+                        help="Saved world artifact path (default: report_TIMESTAMP_world.json)")
     parser.add_argument("--grounding", choices=["static", "live"], default="static",
                         help="Reconstruct the current world state from live data before simulation (default: static)")
     parser.add_argument("--search-provider", choices=["none", "brave", "searxng"], default="none",
-                        help="Search provider for topic grounding (default: none)")
+                        help="Search provider for live grounding (default: none)")
     parser.add_argument("--searxng-url", default=os.environ.get("SEARXNG_BASE_URL"),
                         help="Base URL for a SearXNG instance, e.g. https://searx.example.org")
     parser.add_argument("--presentation", action="store_true",
@@ -473,17 +470,52 @@ def _parse_args():
     parser.add_argument("--render-presentation", choices=["pdf", "pptx", "html"], default=None,
                         help="Optionally render the Marp deck through Marp CLI")
     parser.add_argument("--video-brief", action="store_true",
-                        help="Generate a video production brief for downstream Remotion/Claude workflows")
+                        help="Generate a video production brief for downstream workflows")
     parser.add_argument("--video-brief-output", default=None,
                         help="Video brief output path (default: report_TIMESTAMP_video_brief.md)")
     parser.add_argument("--lens", choices=["government", "central-bank", "ngo", "enterprise-strategy"], default="government",
                         help="Decision-maker lens used to frame outputs (default: government)")
-    return parser.parse_args()
+    parser.add_argument("--named-actors", choices=["auto", "off"], default="auto",
+                        help="Whether to ground real-world leadership and institutional actors (default: auto)")
 
 
-async def main():
+def _build_parser():
+    parser = argparse.ArgumentParser(
+        description="The Small World — current-state-grounded decision intelligence engine",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    run_parser = subparsers.add_parser("run", help="Run a new simulation")
+    _add_run_args(run_parser)
+
+    inspect_parser = subparsers.add_parser("inspect", help="Inspect a saved world artifact")
+    inspect_parser.add_argument("artifact", help="Path to the saved world artifact JSON")
+    inspect_parser.add_argument("--section", choices=["summary", "leaders", "events", "conversations", "agents", "all"], default="summary")
+    inspect_parser.add_argument("--limit", type=int, default=5, help="Max rows to show per section")
+
+    search_parser = subparsers.add_parser("search", help="Search within a saved world artifact")
+    search_parser.add_argument("artifact", help="Path to the saved world artifact JSON")
+    search_parser.add_argument("query", help="Keyword query to search for")
+
+    ask_parser = subparsers.add_parser("ask", help="Ask a question about a saved world artifact")
+    ask_parser.add_argument("artifact", help="Path to the saved world artifact JSON")
+    ask_parser.add_argument("question", help="Question to ask about the saved world")
+    return parser
+
+
+def _normalize_argv(argv: list[str]) -> list[str]:
+    subcommands = {"run", "inspect", "search", "ask", "-h", "--help"}
+    if not argv:
+        return ["run"]
+    if argv[0] not in subcommands:
+        return ["run", *argv]
+    return argv
+
+
+async def _run_command(args):
     _check_env()
-    args = _parse_args()
 
     from agents.world_init import build_world, represented_countries
     from grounding.baseline import (
@@ -493,6 +525,12 @@ async def main():
         classify_scenario,
         format_current_world_state,
     )
+    from grounding.leaders import (
+        build_leadership_grounding,
+        format_leadership_grounding,
+        leadership_agents,
+        leadership_bundle_jsonable,
+    )
     from presentation.agent import (
         generate_presentation,
         generate_video_brief,
@@ -501,6 +539,7 @@ async def main():
     )
     from simulation.events import inject_theory
     from simulation.engine import run_simulation
+    from simulation.artifact import build_artifact, save_artifact
     from report.agent import generate_report
 
     world_state_options = WorldStateOptions(
@@ -525,25 +564,46 @@ async def main():
     console.print(current_world_state_summary)
     console.print()
 
-    # ── Phase 2: World init ───────────────────────────────────────────────────
-    agents, social_graph = build_world(current_state=current_world_state)
+    # ── Phase 2: Named actor grounding ────────────────────────────────────────
+    leader_bundle = None
+    leader_summary = "Leadership and Institutional Grounding\n- Named actor grounding not requested for this run."
+    extra_agents = []
+    if args.named_actors == "auto" and args.grounding == "live":
+        console.print("[bold]Grounding named leadership and institutional actors...[/bold]")
+        with console.status(""):
+            leader_bundle = await build_leadership_grounding(
+                theory=args.theory,
+                available_countries=represented_countries(),
+                options=world_state_options,
+                decision_lens=args.lens,
+            )
+        leader_summary = format_leadership_grounding(leader_bundle)
+        console.print(leader_summary)
+        console.print()
+        extra_agents = leadership_agents(leader_bundle)
+
+    # ── Phase 3: World init ───────────────────────────────────────────────────
+    agents, social_graph = build_world(current_state=current_world_state, extra_agents=extra_agents)
     total_weight = sum(a.representational_weight for a in agents)
     console.print(
-        f"  [green]✓[/green] {len(agents)} archetypes  "
+        f"  [green]✓[/green] {len(agents)} total agents  "
         f"(~{total_weight * 1_000_000:,.0f} people represented)\n"
         f"  [green]✓[/green] Social graph: {social_graph.number_of_edges()} connections\n"
     )
 
-    # ── Phase 3: Theory injection ──────────────────────────────────────────────
+    # ── Phase 4: Theory injection ──────────────────────────────────────────────
     console.print("[bold]Parsing theory → initial events...[/bold]")
     with console.status(""):
-        initial_events = await inject_theory(args.theory, grounding_context=current_world_state_summary)
+        initial_events = await inject_theory(
+            args.theory,
+            grounding_context=f"{current_world_state_summary}\n\n{leader_summary}",
+        )
     console.print(f"  [green]✓[/green] {len(initial_events)} initial events generated\n")
     for e in initial_events:
         console.print(f"    [cyan]·[/cyan] [bold]{e.topic}[/bold]: {e.description[:72]}")
     console.print()
 
-    # ── Phase 4: Live simulation ───────────────────────────────────────────────
+    # ── Phase 5: Live simulation ───────────────────────────────────────────────
     dashboard = SimulationDashboard(
         agents,
         args.theory,
@@ -573,9 +633,11 @@ async def main():
             concurrency=args.concurrency,
         )
 
-    # ── Phase 5: Report ────────────────────────────────────────────────────────
+    # ── Phase 6: Report ────────────────────────────────────────────────────────
     console.print("\n[bold]Generating report…[/bold]")
     sim_log.current_world_state_summary = current_world_state_summary
+    sim_log.leadership_grounding_summary = leader_summary
+    sim_log.named_actor_profiles = leadership_bundle_jsonable(leader_bundle)["actors"] if leader_bundle else []
     sim_log.scenario_classification = scenario_classification
     sim_log.decision_lens = args.lens
     sim_log.baseline_confidence = baseline_assessment.baseline_confidence
@@ -589,8 +651,12 @@ async def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = args.output or f"report_{timestamp}.md"
     Path(output_path).write_text(report_md, encoding="utf-8")
+    artifact_path = args.artifact_output or f"report_{timestamp}_world.json"
+    artifact = build_artifact(sim_log, report_md)
+    save_artifact(artifact_path, artifact)
 
     console.print(f"\n[bold green]✓ Report:[/bold green] {output_path}  (~{len(report_md.split()):,} words)")
+    console.print(f"[bold green]✓ World artifact:[/bold green] {artifact_path}")
 
     if args.presentation:
         console.print("\n[bold]Generating presentation…[/bold]")
@@ -625,6 +691,100 @@ async def main():
         console.print("\n[bold]Emergent events:[/bold]")
         for e in sim_log.emergent_events[:10]:
             console.print(f"  Wk {e.step_introduced}  [cyan]{e.topic}[/cyan] — {e.description[:68]}")
+
+
+def _inspect_command(args):
+    from simulation.artifact import load_artifact
+
+    artifact = load_artifact(args.artifact)
+    limit = args.limit
+    section = args.section
+
+    if section in {"summary", "all"}:
+        console.print(f"[bold]Theory:[/bold] {artifact.get('theory', '')}")
+        console.print(f"[bold]Scenario class:[/bold] {artifact.get('scenario_classification', '')}")
+        console.print(f"[bold]Decision lens:[/bold] {artifact.get('decision_lens', '')}")
+        console.print(f"[bold]Baseline:[/bold] {artifact.get('baseline_confidence', '')}")
+        console.print()
+        console.print(str(artifact.get("current_world_state_summary", ""))[:3000])
+        console.print()
+
+    if section in {"leaders", "all"}:
+        console.print("[bold]Leadership Grounding[/bold]")
+        actors = artifact.get("named_actor_profiles", [])
+        if not actors:
+            summary = str(artifact.get("leadership_grounding_summary", "")).strip()
+            console.print(summary or "- No named leadership actors were saved in this artifact.")
+        else:
+            for actor in actors[:limit]:
+                console.print(
+                    f"- {actor.get('country')}: {actor.get('name')}, {actor.get('title')} "
+                    f"| style={actor.get('typical_response_style', 'n/a')} "
+                    f"| confidence={actor.get('confidence', 'medium')}"
+                )
+        console.print()
+
+    if section in {"events", "all"}:
+        console.print("[bold]Emergent Events[/bold]")
+        for event in artifact.get("emergent_events", [])[:limit]:
+            console.print(f"- Wk {event.get('step_introduced')}: {event.get('topic')} — {event.get('description')}")
+        console.print()
+
+    if section in {"conversations", "all"}:
+        console.print("[bold]Conversations[/bold]")
+        for convo in artifact.get("conversations", [])[:limit]:
+            console.print(f"- Week {convo.get('step')}: {convo.get('agent_a')} x {convo.get('agent_b')} on {convo.get('topic')}")
+            console.print(f"  {str(convo.get('exchange', ''))[:500]}")
+        console.print()
+
+    if section in {"agents", "all"}:
+        console.print("[bold]Agents[/bold]")
+        for agent in artifact.get("agents", [])[:limit]:
+            console.print(
+                f"- {agent.get('name')} ({agent.get('country')}, {agent.get('occupation')}) "
+                f"| emotion={agent.get('emotion')} | connections={agent.get('connections')}"
+            )
+        console.print()
+
+
+def _search_command(args):
+    from simulation.artifact import load_artifact, search_artifact
+
+    artifact = load_artifact(args.artifact)
+    matches = search_artifact(artifact, args.query)
+    if not matches:
+        console.print("[yellow]No matching passages found.[/yellow]")
+        return
+    console.print(f"[bold]Matches for:[/bold] {args.query}")
+    for match in matches:
+        console.print(f"- {match}")
+
+
+async def _ask_command(args):
+    from simulation.artifact import ask_artifact, load_artifact
+
+    artifact = load_artifact(args.artifact)
+    answer = await ask_artifact(artifact, args.question)
+    console.print(answer)
+
+
+async def main(argv: list[str] | None = None):
+    parser = _build_parser()
+    args = parser.parse_args(_normalize_argv(argv if argv is not None else sys.argv[1:]))
+
+    if args.command == "run":
+        await _run_command(args)
+        return
+    if args.command == "inspect":
+        _inspect_command(args)
+        return
+    if args.command == "search":
+        _search_command(args)
+        return
+    if args.command == "ask":
+        await _ask_command(args)
+        return
+    parser.print_help()
 
 
 if __name__ == "__main__":

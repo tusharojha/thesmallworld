@@ -9,10 +9,11 @@ from simulation.engine import SimulationLog
 async def generate_presentation(log: SimulationLog, report_md: str) -> str:
     executive = _extract_bullets(report_md, "## 1. Executive Snapshot", 5)
     baseline = _extract_bullets(report_md, "## 2. Current World State Reconstruction", 5)
-    stress_map = _extract_bullets(report_md, "## 3. System Stress Map", 5)
-    propagation = _extract_bullets(report_md, "## 4. Shock Propagation", 4)
-    indicators = _extract_bullets(report_md, "## 5. Leading Indicators", 4)
-    signals = _extract_bullets(report_md, "## 6. Representative Signals", 4)
+    leadership = _extract_bullets(report_md, "## 3. Leadership And Institutional Response", 5)
+    stress_map = _extract_bullets(report_md, "## 4. System Stress Map", 5)
+    propagation = _extract_bullets(report_md, "## 5. Shock Propagation", 4)
+    indicators = _extract_bullets(report_md, "## 6. Leading Indicators", 4)
+    signals = _extract_bullets(report_md, "## 7. Representative Signals", 4)
 
     cascades = sorted(
         log.cascades,
@@ -42,6 +43,7 @@ async def generate_presentation(log: SimulationLog, report_md: str) -> str:
 
     slides.append(_slide("Executive Judgments", executive or ["- No strong findings recorded."]))
     slides.append(_slide("Current World State", baseline or ["- No baseline reconstruction recorded."]))
+    slides.append(_slide("Leadership Response", leadership or ["- No named leadership actors were grounded."]))
     slides.append(_slide("System Stress Map", stress_map or ["- No system stress map recorded."]))
     slides.append(_slide("Shock Propagation", propagation or ["- No propagation paths recorded."]))
 

@@ -3,10 +3,16 @@ from agents.profile import AgentProfile
 from grounding.baseline import CurrentWorldState, calibrate_world_from_current_state
 
 
-def build_world(current_state: CurrentWorldState | None = None) -> tuple[list[AgentProfile], nx.Graph]:
+def build_world(
+    current_state: CurrentWorldState | None = None,
+    extra_agents: list[AgentProfile] | None = None,
+) -> tuple[list[AgentProfile], nx.Graph]:
     agents = _create_archetypes()
     _apply_current_realism_defaults(agents)
     calibrate_world_from_current_state(agents, current_state)
+    if extra_agents:
+        _apply_current_realism_defaults(extra_agents)
+        agents.extend(extra_agents)
     graph = _build_social_graph(agents)
     return agents, graph
 
@@ -430,6 +436,12 @@ def _build_social_graph(agents: list[AgentProfile]) -> nx.Graph:
                b.occupation in ("journalist", "right-wing media host", "social media influencer",
                                  "senator (right)", "congressperson (left)"):
                 weight += 0.3
+            if _is_institutional_actor(a) or _is_institutional_actor(b):
+                weight += 0.2
+                if a.country == b.country:
+                    weight += 0.15
+                if "government" in a.occupation or "government" in b.occupation:
+                    weight += 0.1
 
             if weight >= 0.5:
                 g.add_edge(a.id, b.id, weight=weight)
@@ -541,3 +553,18 @@ def _apply_current_realism_defaults(agents: list[AgentProfile]) -> None:
 
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
+
+
+def _is_institutional_actor(agent: AgentProfile) -> bool:
+    occupation = agent.occupation.lower()
+    tokens = (
+        "president",
+        "prime minister",
+        "minister",
+        "secretary",
+        "governor",
+        "central bank",
+        "chancellor",
+        "cabinet",
+    )
+    return any(token in occupation for token in tokens)

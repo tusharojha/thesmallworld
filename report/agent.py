@@ -24,6 +24,7 @@ def _build_sections(
     return {
         "executive": _render_executive_snapshot(log, agents, ws),
         "baseline": _render_baseline(log),
+        "leadership": _render_leadership_response(log),
         "stress_map": _render_system_stress_map(log, agents, ws),
         "propagation": _render_propagation(log, agents),
         "indicators": _render_leading_indicators(log, agents, ws),
@@ -88,7 +89,7 @@ def _render_baseline(log: SimulationLog) -> str:
 
 
 def _render_system_stress_map(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
-    lines = ["## 3. System Stress Map", ""]
+    lines = ["## 4. System Stress Map", ""]
 
     country_risks = _country_risk_scores(agents, ws)
     if country_risks:
@@ -119,9 +120,9 @@ def _render_system_stress_map(log: SimulationLog, agents: list[AgentProfile], ws
 
 def _render_propagation(log: SimulationLog, agents: list[AgentProfile]) -> str:
     if not log.cascades:
-        return "## 4. Shock Propagation\n\n- No cascade traces recorded.\n"
+        return "## 5. Shock Propagation\n\n- No cascade traces recorded.\n"
 
-    lines = ["## 4. Shock Propagation", ""]
+    lines = ["## 5. Shock Propagation", ""]
 
     ranked = sorted(
         log.cascades,
@@ -179,7 +180,7 @@ def _render_propagation(log: SimulationLog, agents: list[AgentProfile]) -> str:
 
 def _render_leading_indicators(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
     indicators = _leading_indicators(log, agents, ws)
-    lines = ["## 5. Leading Indicators", ""]
+    lines = ["## 6. Leading Indicators", ""]
     if not indicators:
         lines.append("- No leading indicators surfaced.")
         return "\n".join(lines)
@@ -189,7 +190,7 @@ def _render_leading_indicators(log: SimulationLog, agents: list[AgentProfile], w
 
 
 def _render_representative_signals(log: SimulationLog, agents: list[AgentProfile]) -> str:
-    lines = ["## 6. Representative Signals", ""]
+    lines = ["## 7. Representative Signals", ""]
     selected = sorted(
         agents,
         key=lambda a: (
@@ -212,7 +213,7 @@ def _render_representative_signals(log: SimulationLog, agents: list[AgentProfile
 
 
 def _render_appendix(log: SimulationLog, ws: WorldState) -> str:
-    lines = ["## 7. Appendix", "", "### World State Table", "", "```", ws.summary_table(), "```", ""]
+    lines = ["## 8. Appendix", "", "### World State Table", "", "```", ws.summary_table(), "```", ""]
 
     if log.emergent_events:
         lines.extend(["### Emergent Events", ""])
@@ -266,6 +267,39 @@ def _compute_key_judgments(log: SimulationLog, agents: list[AgentProfile], ws: W
         judgments.append(f"Key amplifiers were {amplifiers[0].split(':', 1)[0].lower()}, showing where the network reinforced the shock.")
 
     return judgments[:4]
+
+
+def _render_leadership_response(log: SimulationLog) -> str:
+    lines = ["## 3. Leadership And Institutional Response", ""]
+    if not log.named_actor_profiles:
+        lines.append("- No named leadership actors were grounded for this run.")
+        if log.leadership_grounding_summary:
+            lines.append("")
+            for raw_line in log.leadership_grounding_summary.splitlines():
+                if raw_line.startswith("- "):
+                    lines.append(raw_line)
+        return "\n".join(lines)
+
+    lines.append(f"- Named actors grounded: {len(log.named_actor_profiles)}")
+    lines.append("")
+    for actor in log.named_actor_profiles[:6]:
+        priorities = ", ".join(actor.get("current_priorities", [])[:3]) or "n/a"
+        constraints = ", ".join(actor.get("constraints", [])[:2]) or "n/a"
+        lines.append(
+            f"- {actor.get('country')}: {actor.get('name')}, {actor.get('title')} | "
+            f"style `{actor.get('typical_response_style', 'n/a')}` | priorities `{priorities}` | "
+            f"constraints `{constraints}` | confidence `{actor.get('confidence', 'medium')}`"
+        )
+
+    if log.leadership_grounding_summary:
+        lines.append("")
+        lines.append("### Grounding Notes")
+        lines.append("")
+        for raw_line in log.leadership_grounding_summary.splitlines():
+            if raw_line.startswith("- "):
+                lines.append(raw_line)
+
+    return "\n".join(lines)
 
 
 def _country_risk_scores(
@@ -453,6 +487,7 @@ def _assemble_markdown(log: SimulationLog, sections: dict[str, str]) -> str:
         f"Scenario class: **{log.scenario_classification or 'strategic shock'}**  \nDecision lens: **{log.decision_lens or 'general'}**",
         sections["executive"],
         sections["baseline"],
+        sections["leadership"],
         sections["stress_map"],
         sections["propagation"],
         sections["indicators"],

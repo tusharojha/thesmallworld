@@ -4,7 +4,7 @@ import os
 import random
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import networkx as nx
 from openai import AsyncOpenAI
@@ -72,6 +72,8 @@ class SimulationLog:
     baseline_inferred_signals: int = 0
     baseline_country_coverage: float = 0.0
     baseline_source_count: int = 0
+    leadership_grounding_summary: str = ""
+    named_actor_profiles: list[dict[str, object]] = field(default_factory=list)
 
 
 def _client() -> AsyncOpenAI:
