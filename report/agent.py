@@ -1,8 +1,12 @@
+from collections import Counter, defaultdict
 from datetime import datetime
 
 from agents.profile import AgentProfile
 from simulation.engine import SimulationLog
-from simulation.world_state import WorldState
+from simulation.world_state import StepSnapshot, WorldState
+
+
+DISTRESS_STATES = {"anxious", "angry", "fearful", "resigned"}
 
 
 async def generate_report(log: SimulationLog) -> str:
@@ -18,117 +22,156 @@ def _build_sections(
     ws: WorldState,
 ) -> dict[str, str]:
     return {
-        "snapshot": _render_snapshot(log, agents, ws),
-        "top_findings": _render_top_findings(log, agents, ws),
-        "unexpected": _render_unexpected_outcomes(log, agents, ws),
-        "trajectories": _render_trajectories(log, ws),
-        "cascades": _render_cascades(log),
+        "executive": _render_executive_snapshot(log, agents, ws),
+        "baseline": _render_baseline(log),
+        "stress_map": _render_system_stress_map(log, agents, ws),
+        "propagation": _render_propagation(log, agents),
+        "indicators": _render_leading_indicators(log, agents, ws),
         "signals": _render_representative_signals(log, agents),
         "appendix": _render_appendix(log, ws),
     }
 
 
-def _render_snapshot(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
+def _render_executive_snapshot(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
     total_weight = sum(a.representational_weight for a in agents)
-    emotional_counts: dict[str, int] = {}
-    for agent in agents:
-        emotional_counts[agent.emotional_state] = emotional_counts.get(agent.emotional_state, 0) + 1
-
-    top_emotions = ", ".join(
-        f"{emotion}={count}" for emotion, count in sorted(emotional_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
-    ) or "n/a"
     latest = ws.history[-1] if ws.history else None
     polarization = latest.political_polarization if latest else 0.0
-    avg_stress = (
-        sum(latest.economic_stress.values()) / len(latest.economic_stress)
-        if latest and latest.economic_stress else 0.0
-    )
+    avg_stress = _avg_stress(latest) if latest else 0.0
+    dominant_emotions = _dominant_emotions(agents)
+    distress_share = _distress_share(agents)
 
     lines = [
-        "## 1. Snapshot",
+        "## 1. Executive Snapshot",
         "",
-        f"- Theory: `{log.theory}`",
-        f"- Time horizon: {log.steps_run} weeks",
+        f"- Scenario: `{log.theory}`",
+        f"- Scenario class: {log.scenario_classification or 'strategic shock'}",
+        f"- Decision lens: {log.decision_lens or 'general'}",
+        f"- Horizon: {log.steps_run} weeks",
         f"- Represented population: ~{total_weight * 1_000_000:,.0f}",
         f"- Final polarization: {polarization:.2f}",
-        f"- Avg economic stress: {avg_stress:.2f}",
-        f"- Dominant emotions: {top_emotions}",
+        f"- Final average economic stress: {avg_stress:.2f}",
+        f"- Distress load: {distress_share * 100:.0f}% of archetypes ended anxious, fearful, angry, or resigned",
+        f"- Dominant emotional states: {dominant_emotions}",
         f"- Emergent events: {len(log.emergent_events)}",
         f"- Cascade traces: {len(log.cascades)}",
         "",
-        "### Current World State",
-        "",
-        *(f"- {line[2:]}" if line.startswith("- ") else f"- {line}" for line in (log.current_world_state_summary or "Static archetype baseline.").splitlines()[:12]),
     ]
-    return "\n".join(lines)
-
-
-def _render_top_findings(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
-    findings = _compute_top_findings(log, agents, ws)
-    lines = ["## 2. Top Findings", ""]
-    if not findings:
-        lines.append("- No strong findings recorded.")
-        return "\n".join(lines)
-    for finding in findings:
+    for finding in _compute_key_judgments(log, agents, ws):
         lines.append(f"- {finding}")
     return "\n".join(lines)
 
 
-def _render_unexpected_outcomes(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
-    items = _compute_unexpected_outcomes(log, agents, ws)
-    lines = ["## 3. Unexpected Outcomes", ""]
-    if not items:
-        lines.append("- No clearly counterintuitive outcomes surfaced.")
-        return "\n".join(lines)
-    for item in items:
-        lines.append(f"- {item}")
+def _render_baseline(log: SimulationLog) -> str:
+    lines = [
+        "## 2. Current World State Reconstruction",
+        "",
+        f"- Baseline confidence: {log.baseline_confidence or 'unknown'}",
+        (
+            f"- Coverage: {log.baseline_country_coverage * 100:.0f}% countries with observed indicators, "
+            f"{log.baseline_observed_signals} observed signals, "
+            f"{log.baseline_inferred_signals} inferred signals"
+        ),
+        f"- Source footprint: {log.baseline_source_count} source streams",
+        "",
+    ]
+
+    for raw_line in (log.current_world_state_summary or "No baseline summary recorded.").splitlines():
+        if raw_line.startswith("- "):
+            lines.append(raw_line)
+        elif raw_line.startswith("  - "):
+            lines.append(raw_line)
+        elif raw_line.strip():
+            lines.append(f"### {raw_line.strip()}")
     return "\n".join(lines)
 
 
-def _render_trajectories(log: SimulationLog, ws: WorldState) -> str:
-    trajectories = _compute_trajectories(log, ws)
-    lines = ["## 4. Main Trajectories", ""]
-    if not trajectories:
-        lines.append("- No trajectory data recorded.")
-        return "\n".join(lines)
-    for item in trajectories:
-        lines.append(f"- {item}")
+def _render_system_stress_map(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
+    lines = ["## 3. System Stress Map", ""]
+
+    country_risks = _country_risk_scores(agents, ws)
+    if country_risks:
+        lines.append("### Risk Concentration By Geography")
+        lines.append("")
+        for country, risk_score, stress, distress, volatility in country_risks[:5]:
+            lines.append(
+                f"- {country}: composite risk `{risk_score:.2f}` "
+                f"(stress `{stress:.2f}`, distress `{distress:.2f}`, volatility `{volatility:.2f}`)"
+            )
+        lines.append("")
+
+    segment_volatility = _segment_volatility(ws)
+    if segment_volatility:
+        lines.append("### Opinion And Stress Volatility")
+        lines.append("")
+        for segment, amplitude, latest_value in segment_volatility[:5]:
+            lines.append(
+                f"- {segment}: volatility amplitude `{amplitude:.2f}` with latest stress `{latest_value:.2f}`"
+            )
+        lines.append("")
+
+    if not country_risks and not segment_volatility:
+        lines.append("- No system-level stress signals were recorded.")
+
     return "\n".join(lines)
 
 
-def _render_cascades(log: SimulationLog) -> str:
+def _render_propagation(log: SimulationLog, agents: list[AgentProfile]) -> str:
     if not log.cascades:
-        return "## 5. Butterfly Effects\n\n- No cascade traces recorded.\n"
+        return "## 4. Shock Propagation\n\n- No cascade traces recorded.\n"
 
-    lines = ["## 5. Butterfly Effects", ""]
+    lines = ["## 4. Shock Propagation", ""]
+
     ranked = sorted(
         log.cascades,
         key=lambda c: (len(c.influenced_agents), len(c.edges)),
         reverse=True,
     )[:3]
-    name_map = {agent.id: agent.name for agent in log.world_state.agents.values()}
-
-    for idx, cascade in enumerate(ranked, start=1):
-        lines.append(f"### Cascade {idx}: {cascade.origin_label} -> {cascade.topic}")
+    lines.append("### Highest-Reach Cascades")
+    lines.append("")
+    for cascade in ranked:
         lines.append(
-            f"- Reach: {len(cascade.direct_recipients)} direct, {len(cascade.influenced_agents)} total, {len(cascade.edges)} activated edges"
+            f"- `{cascade.origin_label}` on `{cascade.topic}` reached `{len(cascade.direct_recipients)}` direct "
+            f"and `{len(cascade.influenced_agents)}` total agents through `{len(cascade.edges)}` activated edges."
         )
-        lines.append("```mermaid")
-        lines.append("graph LR")
-        if cascade.edges:
-            for edge in cascade.edges[:12]:
-                source_label = name_map.get(edge.source_id, edge.source_id).replace('"', "'")
-                target_label = name_map.get(edge.target_id, edge.target_id).replace('"', "'")
-                lines.append(
-                    f'  {edge.source_id}["{source_label}"] -->|h{edge.hop}:{edge.weight:.2f}| {edge.target_id}["{target_label}"]'
-                )
-        else:
-            for agent_id in cascade.direct_recipients[:4]:
-                label = name_map.get(agent_id, agent_id).replace('"', "'")
-                lines.append(f'  {agent_id}["{label}"]')
-        lines.append("```")
+    lines.append("")
+
+    amplifiers = _amplifier_nodes(log, agents)
+    if amplifiers:
+        lines.append("### Amplifiers And Bridge Nodes")
+        lines.append("")
+        for line in amplifiers[:5]:
+            lines.append(f"- {line}")
         lines.append("")
 
+    absorbers = _absorber_countries(log, agents)
+    if absorbers:
+        lines.append("### Populations Absorbing The Shock")
+        lines.append("")
+        for line in absorbers[:4]:
+            lines.append(f"- {line}")
+        lines.append("")
+
+    lines.append("### Cascade Sketch")
+    lines.append("")
+    lines.append("```mermaid")
+    lines.append("graph LR")
+    for idx, cascade in enumerate(ranked, start=1):
+        origin = f"origin_{idx}"
+        lines.append(f'  {origin}["{cascade.origin_label}"]')
+        for edge in cascade.edges[:6]:
+            lines.append(f'  {edge.source_id} -->|h{edge.hop}:{edge.weight:.2f}| {edge.target_id}')
+    lines.append("```")
+    return "\n".join(lines)
+
+
+def _render_leading_indicators(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> str:
+    indicators = _leading_indicators(log, agents, ws)
+    lines = ["## 5. Leading Indicators", ""]
+    if not indicators:
+        lines.append("- No leading indicators surfaced.")
+        return "\n".join(lines)
+    for indicator in indicators:
+        lines.append(f"- {indicator}")
     return "\n".join(lines)
 
 
@@ -143,13 +186,15 @@ def _render_representative_signals(log: SimulationLog, agents: list[AgentProfile
         reverse=True,
     )[:4]
 
+    if not selected:
+        lines.append("- No representative signals recorded.")
+        return "\n".join(lines)
+
     for agent in selected:
         memory = agent.memory[-1]["summary"] if agent.memory else "No significant memory recorded."
         lines.append(
-            f"- {agent.name} ({agent.country}, {agent.occupation}, emotion={agent.emotional_state}) "
-            f"-> {memory}"
+            f"- {agent.name} ({agent.country}, {agent.occupation}, emotion={agent.emotional_state}) -> {memory}"
         )
-
     return "\n".join(lines)
 
 
@@ -173,190 +218,226 @@ def _render_appendix(log: SimulationLog, ws: WorldState) -> str:
     return "\n".join(lines)
 
 
-def _compute_top_findings(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> list[str]:
-    findings: list[str] = []
+def _compute_key_judgments(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> list[str]:
+    judgments: list[str] = []
     latest = ws.history[-1] if ws.history else None
     if latest:
-        findings.append(
-            f"Polarization closed at `{latest.political_polarization:.2f}` with "
-            f"`{_avg_stress(latest):.2f}` average economic stress, showing the system ended "
-            f"in a {'tense' if latest.political_polarization >= 0.45 else 'contained'} equilibrium."
+        equilibrium = "fragile" if latest.political_polarization >= 0.45 or _avg_stress(latest) >= 0.45 else "contained"
+        judgments.append(
+            f"The scenario ended in a `{equilibrium}` equilibrium with polarization at `{latest.political_polarization:.2f}` "
+            f"and average economic stress at `{_avg_stress(latest):.2f}`."
         )
 
-    extreme_topics = _top_topic_swings(ws, limit=3)
-    for topic, value in extreme_topics:
-        direction = "support consolidated" if value > 0 else "backlash concentrated"
-        findings.append(
-            f"`{topic}` was a leading belief axis at `{value:+.2f}`, indicating where {direction}."
-        )
-
-    if log.emergent_events:
-        event = log.emergent_events[0]
-        findings.append(
-            f"The first emergent event was `{event.topic}`, showing the simulation quickly translated individual reactions into collective consequences."
+    top_countries = _country_risk_scores(agents, ws)[:2]
+    if top_countries:
+        judgments.append(
+            "Risk concentrated first in "
+            + ", ".join(f"`{country}`" for country, *_ in top_countries)
+            + ", where stress and emotional load combined most sharply."
         )
 
     if log.cascades:
         biggest = max(log.cascades, key=lambda c: (len(c.influenced_agents), len(c.edges)))
-        findings.append(
-            f"The strongest butterfly effect came from `{biggest.origin_label}` on `{biggest.topic}`, reaching `{len(biggest.influenced_agents)}` agents through `{len(biggest.edges)}` activated edges."
+        judgments.append(
+            f"The strongest propagation path was `{biggest.origin_label} -> {biggest.topic}`, "
+            f"reaching `{len(biggest.influenced_agents)}` agents through `{len(biggest.edges)}` explicit graph edges."
         )
 
-    return findings[:5]
+    amplifiers = _amplifier_nodes(log, agents)
+    if amplifiers:
+        judgments.append(f"Key amplifiers were {amplifiers[0].split(':', 1)[0].lower()}, showing where the network reinforced the shock.")
+
+    return judgments[:4]
 
 
-def _compute_unexpected_outcomes(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> list[str]:
-    items: list[str] = []
-    low_trust_hopeful = [a for a in agents if a.trust_in_institutions <= 0.25 and a.emotional_state in ("hopeful", "excited", "determined")]
-    high_trust_anxious = [a for a in agents if a.trust_in_institutions >= 0.55 and a.emotional_state in ("anxious", "fearful", "angry")]
-    if low_trust_hopeful:
-        items.append(
-            f"`{len(low_trust_hopeful)}` low-trust agents still ended hopeful or determined, suggesting outcomes were not driven by institutional confidence alone."
-        )
-    if high_trust_anxious:
-        items.append(
-            f"`{len(high_trust_anxious)}` relatively high-trust agents still ended anxious or angry, indicating the scenario destabilized even actors usually buffered by institutions."
-        )
-
-    cross_border = [
-        c for c in log.cascades
-        if any(
-            log.world_state.agents[edge.source_id].country != log.world_state.agents[edge.target_id].country
-            for edge in c.edges
-        )
-    ]
-    if cross_border:
-        items.append(
-            f"`{len(cross_border)}` cascades crossed country boundaries, so the strongest effects were network-driven rather than strictly national."
-        )
-
-    extreme_disengagement = [a for a in agents if a.emotional_state == "resigned" and a.conflict_orientation >= 0.5]
-    if extreme_disengagement:
-        items.append(
-            f"`{len(extreme_disengagement)}` agents became simultaneously combative and resigned, a more dangerous pattern than simple opposition because it mixes grievance with low faith in repair."
-        )
-
-    return items[:4]
-
-
-def _compute_trajectories(log: SimulationLog, ws: WorldState) -> list[str]:
-    trajectories: list[str] = []
-    latest = ws.history[-1] if ws.history else None
-    if not latest:
-        return trajectories
-
-    for topic, value in _top_topic_swings(ws, limit=3):
-        trend = _topic_trend(ws, topic)
-        if trend is None:
-            continue
-        trajectories.append(
-            f"`{topic}` moved from `{trend[0]:+.2f}` to `{trend[1]:+.2f}` and finished at `{value:+.2f}`, making it one of the clearest scenario trajectories."
-        )
-
-    if latest.cascade_summaries:
-        trajectories.append(
-            f"Late-stage network activity was still active: {latest.cascade_summaries[0]}."
-        )
-
-    return trajectories[:4]
-
-
-def _top_topic_swings(ws: WorldState, limit: int = 3) -> list[tuple[str, float]]:
+def _country_risk_scores(
+    agents: list[AgentProfile],
+    ws: WorldState,
+) -> list[tuple[str, float, float, float, float]]:
     latest = ws.history[-1] if ws.history else None
     if not latest:
         return []
-    global_topics: dict[str, float] = {}
-    for seg_beliefs in latest.opinion_by_segment.values():
-        for topic, value in seg_beliefs.items():
-            canonical = _canonical_topic(topic)
-            global_topics.setdefault(canonical, []).append(value)
-    scored = [(topic, sum(values) / len(values)) for topic, values in global_topics.items()]
-    scored.sort(key=lambda kv: abs(kv[1]), reverse=True)
-    return scored[:limit]
+
+    countries = sorted({agent.country for agent in agents})
+    distress_by_country: dict[str, float] = {}
+    for country in countries:
+        country_agents = [agent for agent in agents if agent.country == country]
+        if not country_agents:
+            continue
+        distress_by_country[country] = sum(
+            1 for agent in country_agents if agent.emotional_state in DISTRESS_STATES
+        ) / len(country_agents)
+
+    volatility_map = _country_volatility(ws)
+    results = []
+    for country in countries:
+        stress = latest.economic_stress.get(country, 0.0)
+        distress = distress_by_country.get(country, 0.0)
+        volatility = volatility_map.get(country, 0.0)
+        risk_score = 0.5 * stress + 0.3 * distress + 0.2 * volatility
+        results.append((country, risk_score, stress, distress, volatility))
+
+    return sorted(results, key=lambda item: item[1], reverse=True)
 
 
-def _topic_trend(ws: WorldState, topic: str) -> tuple[float, float] | None:
-    values: list[float] = []
-    for snap in ws.history:
-        per_step: list[float] = []
-        for seg_beliefs in snap.opinion_by_segment.values():
-            for raw_topic, value in seg_beliefs.items():
-                if _canonical_topic(raw_topic) == topic:
-                    per_step.append(value)
-        if per_step:
-            values.append(sum(per_step) / len(per_step))
-    if len(values) >= 2:
-        return values[0], values[-1]
-    if len(values) == 1:
-        return values[0], values[0]
-    return None
+def _segment_volatility(ws: WorldState) -> list[tuple[str, float, float]]:
+    series: dict[str, list[float]] = defaultdict(list)
+    for snapshot in ws.history:
+        for segment, value in snapshot.economic_stress.items():
+            series[segment].append(value)
+
+    scored = []
+    for segment, values in series.items():
+        if len(values) < 2:
+            continue
+        amplitude = max(values) - min(values)
+        scored.append((segment, amplitude, values[-1]))
+    return sorted(scored, key=lambda item: item[1], reverse=True)
 
 
-def _canonical_topic(topic: str) -> str:
-    normalized = "".join(ch.lower() if ch.isalnum() else "_" for ch in topic)
-    normalized = "_".join(part for part in normalized.split("_") if part)
-
-    aliases = {
-        "government_policies": "government_policy",
-        "government_policy": "government_policy",
-        "economic_policies": "economic_policy",
-        "economic_policy": "economic_policy",
-        "economic_impact": "economic_impact",
-        "globaleconomy": "global_economy",
-        "global_economy": "global_economy",
-        "communityprotests": "community_protests",
-        "oppositionarguments": "opposition_arguments",
-        "futureofwork": "future_of_work",
-        "localbusinesses": "local_businesses",
+def _country_volatility(ws: WorldState) -> dict[str, float]:
+    return {
+        segment: amplitude
+        for segment, amplitude, _latest in _segment_volatility(ws)
+        if not segment.startswith("income_") and not segment.startswith("ideology_")
     }
-    topic_key = aliases.get(normalized, normalized)
-    return topic_key.replace("_", " ")
 
 
-def _avg_stress(snapshot) -> float:
-    return (
-        sum(snapshot.economic_stress.values()) / len(snapshot.economic_stress)
-        if snapshot.economic_stress else 0.0
-    )
+def _amplifier_nodes(log: SimulationLog, agents: list[AgentProfile]) -> list[str]:
+    id_map = {agent.id: agent for agent in agents}
+    source_scores: dict[str, float] = defaultdict(float)
+    source_edges: Counter[str] = Counter()
+    bridge_countries: dict[str, set[str]] = defaultdict(set)
+
+    for cascade in log.cascades:
+        for edge in cascade.edges:
+            source_scores[edge.source_id] += edge.weight
+            source_edges[edge.source_id] += 1
+            source_country = id_map.get(edge.source_id).country if edge.source_id in id_map else None
+            target_country = id_map.get(edge.target_id).country if edge.target_id in id_map else None
+            if source_country and target_country and source_country != target_country:
+                bridge_countries[edge.source_id].add(target_country)
+
+    scored = []
+    for agent_id, score in source_scores.items():
+        agent = id_map.get(agent_id)
+        if not agent:
+            continue
+        scored.append(
+            (
+                agent_id,
+                score + len(bridge_countries.get(agent_id, set())) * 0.5,
+                f"{agent.name} ({agent.country}): relay score `{score:.2f}`, "
+                f"activated `{source_edges[agent_id]}` edges, "
+                f"crossed into `{len(bridge_countries.get(agent_id, set()))}` other country clusters",
+            )
+        )
+    scored.sort(key=lambda item: item[1], reverse=True)
+    return [item[2] for item in scored]
+
+
+def _absorber_countries(log: SimulationLog, agents: list[AgentProfile]) -> list[str]:
+    id_map = {agent.id: agent for agent in agents}
+    incoming: Counter[str] = Counter()
+    outgoing: Counter[str] = Counter()
+
+    for cascade in log.cascades:
+        for edge in cascade.edges:
+            source = id_map.get(edge.source_id)
+            target = id_map.get(edge.target_id)
+            if not source or not target:
+                continue
+            outgoing[source.country] += 1
+            incoming[target.country] += 1
+
+    scored = []
+    for country in sorted({agent.country for agent in agents}):
+        intake = incoming[country]
+        relay = outgoing[country]
+        if intake == 0 and relay == 0:
+            continue
+        absorption = intake - relay
+        if absorption > 0:
+            scored.append(
+                (
+                    absorption,
+                    f"{country}: absorbed `{intake}` incoming relays and retransmitted `{relay}`, suggesting pressure accumulated locally faster than it spread outward.",
+                )
+            )
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [item[1] for item in scored]
+
+
+def _leading_indicators(log: SimulationLog, agents: list[AgentProfile], ws: WorldState) -> list[str]:
+    indicators: list[str] = []
+    if not ws.history:
+        return indicators
+
+    first = ws.history[0]
+    latest = ws.history[-1]
+    polarization_change = latest.political_polarization - first.political_polarization
+    stress_change = _avg_stress(latest) - _avg_stress(first)
+    if polarization_change > 0.08:
+        indicators.append(
+            f"Polarization rose by `{polarization_change:+.2f}` from week 1 to week {latest.step}, a clear precursor to institutional strain."
+        )
+    if stress_change > 0.08:
+        indicators.append(
+            f"Average economic stress rose by `{stress_change:+.2f}`, indicating households were not absorbing the shock cleanly."
+        )
+
+    distress_share = _distress_share(agents)
+    if distress_share >= 0.45:
+        indicators.append(
+            f"Distress states reached `{distress_share * 100:.0f}%` of archetypes, which raises the chance that sentiment shocks convert into broader instability."
+        )
+
+    volatile_segments = _segment_volatility(ws)
+    if volatile_segments:
+        segment, amplitude, latest_value = volatile_segments[0]
+        indicators.append(
+            f"The most unstable segment was `{segment}` with stress amplitude `{amplitude:.2f}` and latest stress `{latest_value:.2f}`."
+        )
+
+    if log.emergent_events:
+        earliest = min(log.emergent_events, key=lambda event: event.step_introduced)
+        indicators.append(
+            f"The first emergent event appeared in week `{earliest.step_introduced}`, showing rapid conversion from micro-reactions to macro behavior."
+        )
+
+    return indicators[:5]
+
+
+def _dominant_emotions(agents: list[AgentProfile]) -> str:
+    counts = Counter(agent.emotional_state for agent in agents)
+    return ", ".join(
+        f"{emotion}={count}" for emotion, count in counts.most_common(4)
+    ) or "n/a"
+
+
+def _distress_share(agents: list[AgentProfile]) -> float:
+    if not agents:
+        return 0.0
+    distressed = sum(1 for agent in agents if agent.emotional_state in DISTRESS_STATES)
+    return distressed / len(agents)
+
+
+def _avg_stress(snapshot: StepSnapshot | None) -> float:
+    if not snapshot or not snapshot.economic_stress:
+        return 0.0
+    return sum(snapshot.economic_stress.values()) / len(snapshot.economic_stress)
 
 
 def _assemble_markdown(log: SimulationLog, sections: dict[str, str]) -> str:
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    return f"""# The Small World — Findings Report
-
-**Theory:** {log.theory}
-**Simulated:** {log.steps_run} weeks
-**Generated:** {now}
-
----
-
-{sections['snapshot']}
-
----
-
-{sections['top_findings']}
-
----
-
-{sections['unexpected']}
-
----
-
-{sections['trajectories']}
-
----
-
-{sections['cascades']}
-
----
-
-{sections['signals']}
-
----
-
-{sections['appendix']}
-
----
-
-*Generated by The Small World — a current-state-grounded scenario engine.*
-"""
+    generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    return "\n\n".join([
+        f"# The Small World Decision Brief\n\nGenerated: {generated_at}",
+        f"Scenario class: **{log.scenario_classification or 'strategic shock'}**  \nDecision lens: **{log.decision_lens or 'general'}**",
+        sections["executive"],
+        sections["baseline"],
+        sections["stress_map"],
+        sections["propagation"],
+        sections["indicators"],
+        sections["signals"],
+        sections["appendix"],
+    ]).strip() + "\n"

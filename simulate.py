@@ -69,7 +69,15 @@ def _elapsed(start: float) -> str:
 
 # ── Dashboard state & rendering ───────────────────────────────────────────────
 class SimulationDashboard:
-    def __init__(self, agents, theory: str, n_steps: int):
+    def __init__(
+        self,
+        agents,
+        theory: str,
+        n_steps: int,
+        scenario_classification: str = "",
+        decision_lens: str = "",
+        baseline_confidence: str = "",
+    ):
         self.theory = theory
         self.n_steps = n_steps
         self.total_agents = len(agents)
@@ -77,6 +85,9 @@ class SimulationDashboard:
         self.current_step = 0
         self.agents_done_this_step = 0
         self._live = None
+        self.scenario_classification = scenario_classification
+        self.decision_lens = decision_lens
+        self.baseline_confidence = baseline_confidence
 
         # Per-agent display state
         self.agent_states: dict[str, dict] = {
@@ -224,10 +235,10 @@ class SimulationDashboard:
         grid.add_column(justify="center", ratio=3)
         grid.add_column(justify="right", ratio=1)
         grid.add_row(
-            Text("THE SMALL WORLD", style="bold cyan"),
+            Text("THE SMALL WORLD // DECISION INTELLIGENCE", style="bold cyan"),
             Text(f'"{self.theory[:64]}"', style="dim italic"),
             Text(
-                f"Week {self.current_step}/{self.n_steps}   {_elapsed(self.start_time)}",
+                f"{self.scenario_classification or 'scenario'}   Week {self.current_step}/{self.n_steps}   {_elapsed(self.start_time)}",
                 style="yellow bold",
             ),
         )
@@ -323,7 +334,7 @@ class SimulationDashboard:
             elif kind == "reaction":
                 content.append(f"  {text[:52]}\n", style="dim")
 
-        title = f"[bold]LIVE FEED[/bold]  Week [yellow]{self.current_step}[/yellow]  [dim]({self.emergent_count} emergent events)[/dim]"
+        title = f"[bold]CASCADE FEED[/bold]  Week [yellow]{self.current_step}[/yellow]  [dim]({self.emergent_count} emergent events)[/dim]"
         return Panel(content, title=title, border_style="green", padding=(0, 1))
 
     # ── World panel ───────────────────────────────────────────────────────────
@@ -366,7 +377,7 @@ class SimulationDashboard:
             for entry in self.event_log[-4:]:
                 content.append(f"⚡ {entry[:26]}\n", style="yellow dim")
 
-        return Panel(content, title="[bold]WORLD STATE[/bold]", border_style="magenta", padding=(0, 1))
+        return Panel(content, title="[bold]SYSTEM STATE[/bold]", border_style="magenta", padding=(0, 1))
 
     # ── Footer ────────────────────────────────────────────────────────────────
 
@@ -390,6 +401,8 @@ class SimulationDashboard:
         content.append(
             f"\n  Elapsed: {_elapsed(self.start_time)}  │  "
             f"Emergent: {self.emergent_count}  │  "
+            f"Lens: {self.decision_lens or 'general'}  │  "
+            f"Baseline: {self.baseline_confidence or 'n/a'}  │  "
             f"Model: {model}  │  "
             f"Concurrency: {self._concurrency if hasattr(self, '_concurrency') else '—'}",
             style="dim",
@@ -425,12 +438,12 @@ def _check_env():
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="The Small World — societal simulation engine",
+        description="The Small World — current-state-grounded decision intelligence engine",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument("--theory", "-t", required=True,
-                        help='The "what if" theory to simulate')
+                        help='The policy, market, infrastructure, or geopolitical shock to simulate')
     parser.add_argument("--steps", "-s", type=int, default=10,
                         help="Simulation weeks to run (default: 10)")
     parser.add_argument("--concurrency", "-c", type=int, default=20,
@@ -453,6 +466,8 @@ def _parse_args():
                         help="Generate a video production brief for downstream Remotion/Claude workflows")
     parser.add_argument("--video-brief-output", default=None,
                         help="Video brief output path (default: report_TIMESTAMP_video_brief.md)")
+    parser.add_argument("--lens", choices=["government", "central-bank", "ngo", "enterprise-strategy"], default="government",
+                        help="Decision-maker lens used to frame outputs (default: government)")
     return parser.parse_args()
 
 
@@ -463,7 +478,9 @@ async def main():
     from agents.world_init import build_world, represented_countries
     from grounding.baseline import (
         WorldStateOptions,
+        assess_current_world_state,
         build_current_world_state,
+        classify_scenario,
         format_current_world_state,
     )
     from presentation.agent import (
@@ -493,6 +510,8 @@ async def main():
             options=world_state_options,
         )
     current_world_state_summary = format_current_world_state(current_world_state)
+    baseline_assessment = assess_current_world_state(current_world_state)
+    scenario_classification = classify_scenario(args.theory)
     console.print(current_world_state_summary)
     console.print()
 
@@ -515,7 +534,14 @@ async def main():
     console.print()
 
     # ── Phase 4: Live simulation ───────────────────────────────────────────────
-    dashboard = SimulationDashboard(agents, args.theory, args.steps)
+    dashboard = SimulationDashboard(
+        agents,
+        args.theory,
+        args.steps,
+        scenario_classification=scenario_classification,
+        decision_lens=args.lens,
+        baseline_confidence=baseline_assessment.baseline_confidence,
+    )
     dashboard._concurrency = args.concurrency
     dashboard._render_all()
 
@@ -540,6 +566,13 @@ async def main():
     # ── Phase 5: Report ────────────────────────────────────────────────────────
     console.print("\n[bold]Generating report…[/bold]")
     sim_log.current_world_state_summary = current_world_state_summary
+    sim_log.scenario_classification = scenario_classification
+    sim_log.decision_lens = args.lens
+    sim_log.baseline_confidence = baseline_assessment.baseline_confidence
+    sim_log.baseline_observed_signals = baseline_assessment.observed_signal_count
+    sim_log.baseline_inferred_signals = baseline_assessment.inferred_signal_count
+    sim_log.baseline_country_coverage = baseline_assessment.country_coverage_ratio
+    sim_log.baseline_source_count = baseline_assessment.source_count
     with console.status("Synthesising findings…"):
         report_md = await generate_report(sim_log)
 

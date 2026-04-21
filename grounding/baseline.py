@@ -38,6 +38,18 @@ class CurrentWorldState:
     notes: list[str] = field(default_factory=list)
 
 
+@dataclass
+class BaselineAssessment:
+    scenario_classification: str
+    observed_signal_count: int
+    inferred_signal_count: int
+    country_coverage_ratio: float
+    baseline_confidence: str
+    source_count: int
+    observed_state: list[str] = field(default_factory=list)
+    inferred_state: list[str] = field(default_factory=list)
+
+
 def _client() -> AsyncOpenAI:
     return AsyncOpenAI(
         api_key=os.environ["OPENAI_API_KEY"],
@@ -260,30 +272,132 @@ def calibrate_world_from_current_state(
                 agent.emotional_state = "hopeful"
 
 
+def classify_scenario(theory: str) -> str:
+    text = theory.lower()
+
+    if any(term in text for term in ("tariff", "ubi", "subsidy", "tax", "rate hike", "interest rate", "export control", "export restriction", "regulation", "central bank", "policy")):
+        return "policy shock"
+    if any(term in text for term in ("stock", "market", "bank run", "recession", "inflation", "credit", "fuel shock", "energy price", "commodity")):
+        return "market shock"
+    if any(term in text for term in ("war", "military", "invasion", "sanction", "geopolitical", "border", "missile", "embargo")):
+        return "geopolitical event"
+    if any(term in text for term in ("grid", "blackout", "cyber", "internet outage", "port closure", "supply chain", "shipping", "infrastructure")):
+        return "infrastructure disruption"
+    if any(term in text for term in ("ban", "compliance", "mandate", "restriction", "licensing")):
+        return "regulatory intervention"
+    return "strategic shock"
+
+
+def assess_current_world_state(current_state: CurrentWorldState | None) -> BaselineAssessment:
+    if not current_state:
+        return BaselineAssessment(
+            scenario_classification="strategic shock",
+            observed_signal_count=0,
+            inferred_signal_count=0,
+            country_coverage_ratio=0.0,
+            baseline_confidence="low",
+            source_count=0,
+            observed_state=["No baseline data loaded."],
+            inferred_state=["No inferred state available."],
+        )
+
+    observed_signal_count = 0
+    countries_with_any_signal = 0
+    observed_state: list[str] = []
+
+    for row in sorted(current_state.country_stats.values(), key=lambda item: item.country):
+        available_metrics = [
+            row.population_total,
+            row.urban_pct,
+            row.gdp_growth,
+            row.inflation,
+            row.unemployment,
+            row.gdp_per_capita_usd,
+        ]
+        non_null_metrics = sum(1 for value in available_metrics if value is not None)
+        observed_signal_count += non_null_metrics
+        if non_null_metrics:
+            countries_with_any_signal += 1
+            if len(observed_state) < 6:
+                observed_state.append(
+                    f"{row.country}: pop={_fmt(row.population_total)}, urban={_fmt(row.urban_pct)}%, "
+                    f"gdp_growth={_fmt(row.gdp_growth)}%, inflation={_fmt(row.inflation)}%, "
+                    f"unemployment={_fmt(row.unemployment)}%"
+                )
+
+    inferred_state: list[str] = []
+    inferred_signal_count = 0
+    source_count = 1 if current_state.country_stats else 0
+
+    if current_state.topic_pulse:
+        pulse = current_state.topic_pulse
+        source_count += len(pulse.source_urls)
+        ideology_signals = [
+            pulse.left_sentiment,
+            pulse.center_sentiment,
+            pulse.right_sentiment,
+        ]
+        inferred_signal_count += len(ideology_signals)
+        inferred_signal_count += len(pulse.country_sentiments)
+        inferred_signal_count += len(pulse.key_narratives)
+        inferred_signal_count += len(pulse.economic_channels)
+
+        inferred_state.append(
+            f"Public discourse pulse `{pulse.topic_key}`: left={pulse.left_sentiment:+.2f}, "
+            f"center={pulse.center_sentiment:+.2f}, right={pulse.right_sentiment:+.2f}"
+        )
+        for narrative in pulse.key_narratives[:3]:
+            inferred_state.append(f"Narrative: {narrative}")
+        for channel in pulse.economic_channels[:2]:
+            inferred_state.append(f"Economic channel: {channel}")
+    else:
+        inferred_state.append("No topic-specific discourse reconstruction was available.")
+
+    total_countries = max(1, len(current_state.country_stats))
+    country_coverage_ratio = countries_with_any_signal / total_countries
+
+    if country_coverage_ratio >= 0.8 and observed_signal_count >= 24:
+        baseline_confidence = "high"
+    elif country_coverage_ratio >= 0.5 and observed_signal_count >= 12:
+        baseline_confidence = "medium"
+    else:
+        baseline_confidence = "low"
+
+    return BaselineAssessment(
+        scenario_classification=classify_scenario(current_state.theory),
+        observed_signal_count=observed_signal_count,
+        inferred_signal_count=inferred_signal_count,
+        country_coverage_ratio=country_coverage_ratio,
+        baseline_confidence=baseline_confidence,
+        source_count=source_count,
+        observed_state=observed_state or ["No observed state available."],
+        inferred_state=inferred_state,
+    )
+
+
 def format_current_world_state(current_state: CurrentWorldState | None) -> str:
     if not current_state:
         return "No current world-state object available."
 
-    lines = ["Current world state:"]
-    lines.extend(f"- {note}" for note in current_state.notes)
-
-    if current_state.country_stats:
-        sample = sorted(current_state.country_stats.values(), key=lambda row: row.country)[:8]
-        for row in sample:
-            lines.append(
-                f"- {row.country}: pop={_fmt(row.population_total)}, urban={_fmt(row.urban_pct)}%, "
-                f"gdp_growth={_fmt(row.gdp_growth)}%, inflation={_fmt(row.inflation)}%, "
-                f"unemployment={_fmt(row.unemployment)}%"
-            )
-
-    if current_state.topic_pulse:
-        pulse = current_state.topic_pulse
-        lines.append(
-            f"- Topic pulse `{pulse.topic_key}`: left={pulse.left_sentiment:+.2f}, "
-            f"center={pulse.center_sentiment:+.2f}, right={pulse.right_sentiment:+.2f}"
-        )
-        for narrative in pulse.key_narratives[:4]:
-            lines.append(f"- Narrative: {narrative}")
+    assessment = assess_current_world_state(current_state)
+    lines = [
+        "Current World State Reconstruction",
+        f"- Scenario class: {assessment.scenario_classification}",
+        (
+            f"- Baseline confidence: {assessment.baseline_confidence} "
+            f"({assessment.country_coverage_ratio * 100:.0f}% country coverage, "
+            f"{assessment.observed_signal_count} observed signals, "
+            f"{assessment.inferred_signal_count} inferred signals)"
+        ),
+        f"- Source count: {assessment.source_count}",
+        "- Observed state:",
+    ]
+    lines.extend(f"  - {line}" for line in assessment.observed_state[:6])
+    lines.append("- Inferred state:")
+    lines.extend(f"  - {line}" for line in assessment.inferred_state[:6])
+    if current_state.notes:
+        lines.append("- Data notes:")
+        lines.extend(f"  - {note}" for note in current_state.notes[:6])
 
     return "\n".join(lines)
 

@@ -65,6 +65,13 @@ class SimulationLog:
     cascades: list[CascadeTrace]
     world_state: WorldState
     current_world_state_summary: str = ""
+    scenario_classification: str = ""
+    decision_lens: str = ""
+    baseline_confidence: str = ""
+    baseline_observed_signals: int = 0
+    baseline_inferred_signals: int = 0
+    baseline_country_coverage: float = 0.0
+    baseline_source_count: int = 0
 
 
 def _client() -> AsyncOpenAI:

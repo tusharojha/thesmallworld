@@ -7,9 +7,11 @@ from simulation.engine import SimulationLog
 
 
 async def generate_presentation(log: SimulationLog, report_md: str) -> str:
-    top_findings = _extract_bullets(report_md, "## 2. Top Findings", 5)
-    unexpected = _extract_bullets(report_md, "## 3. Unexpected Outcomes", 4)
-    trajectories = _extract_bullets(report_md, "## 4. Main Trajectories", 4)
+    executive = _extract_bullets(report_md, "## 1. Executive Snapshot", 5)
+    baseline = _extract_bullets(report_md, "## 2. Current World State Reconstruction", 5)
+    stress_map = _extract_bullets(report_md, "## 3. System Stress Map", 5)
+    propagation = _extract_bullets(report_md, "## 4. Shock Propagation", 4)
+    indicators = _extract_bullets(report_md, "## 5. Leading Indicators", 4)
     signals = _extract_bullets(report_md, "## 6. Representative Signals", 4)
 
     cascades = sorted(
@@ -24,20 +26,24 @@ async def generate_presentation(log: SimulationLog, report_md: str) -> str:
     slides.append(_title_slide(log))
 
     snapshot_lines = [
+        f"- Scenario class: {log.scenario_classification or 'strategic shock'}",
+        f"- Decision lens: {log.decision_lens or 'general'}",
         f"- Weeks simulated: {log.steps_run}",
         f"- Emergent events: {len(log.emergent_events)}",
         f"- Cascade traces: {len(log.cascades)}",
+        f"- Baseline confidence: {log.baseline_confidence or 'unknown'}",
     ]
     if latest:
         snapshot_lines.extend([
             f"- Final polarization: {latest.political_polarization:.2f}",
             f"- Avg economic stress: {_avg_stress(latest):.2f}",
         ])
-    slides.append(_slide("Current World Snapshot", snapshot_lines))
+    slides.append(_slide("Decision Snapshot", snapshot_lines))
 
-    slides.append(_slide("Top Findings", top_findings or ["- No strong findings recorded."]))
-    slides.append(_slide("Unexpected Outcomes", unexpected or ["- No clearly counterintuitive outcomes surfaced."]))
-    slides.append(_slide("Main Trajectories", trajectories or ["- No trajectory data recorded."]))
+    slides.append(_slide("Executive Judgments", executive or ["- No strong findings recorded."]))
+    slides.append(_slide("Current World State", baseline or ["- No baseline reconstruction recorded."]))
+    slides.append(_slide("System Stress Map", stress_map or ["- No system stress map recorded."]))
+    slides.append(_slide("Shock Propagation", propagation or ["- No propagation paths recorded."]))
 
     if cascades:
         for idx, cascade in enumerate(cascades, start=1):
@@ -53,19 +59,21 @@ async def generate_presentation(log: SimulationLog, report_md: str) -> str:
                 ],
             ))
 
+    slides.append(_slide("Leading Indicators", indicators or ["- No leading indicators recorded."]))
     slides.append(_slide("Representative Signals", signals or ["- No representative signal lines recorded."]))
     slides.append(_slide("Decision Use", [
+        f"- Frame actions through the `{log.decision_lens or 'general'}` lens.",
         "- Use this as a stress test, not as a literal forecast.",
-        "- Watch for early high-centrality cascades and low-trust/high-fatigue clusters.",
-        "- Compare alternate interventions against the same reconstructed current world state.",
+        "- Watch for early high-centrality cascades and low-trust or high-fatigue clusters.",
+        "- Compare interventions against the same reconstructed current world state.",
     ]))
 
     return "\n\n---\n\n".join(slides).strip() + "\n"
 
 
 async def generate_video_brief(log: SimulationLog, report_md: str) -> str:
-    top_findings = _extract_bullets(report_md, "## 2. Top Findings", 4)
-    unexpected = _extract_bullets(report_md, "## 3. Unexpected Outcomes", 3)
+    top_findings = _extract_bullets(report_md, "## 1. Executive Snapshot", 4)
+    indicators = _extract_bullets(report_md, "## 5. Leading Indicators", 3)
     cascades = sorted(
         log.cascades,
         key=lambda c: (len(c.influenced_agents), len(c.edges)),
@@ -77,8 +85,9 @@ async def generate_video_brief(log: SimulationLog, report_md: str) -> str:
         "",
         "## Goal",
         "",
-        f"- Explain how `{log.theory}` changes the world from the reconstructed current state.",
+        f"- Explain how `{log.theory}` changes the reconstructed current world state.",
         "- Focus on second-order effects, not only direct reactions.",
+        f"- Frame takeaways for a `{log.decision_lens or 'general'}` audience.",
         "",
         "## Runtime Options",
         "",
@@ -88,16 +97,16 @@ async def generate_video_brief(log: SimulationLog, report_md: str) -> str:
         "## Scene List",
         "",
         "1. Reconstructed current world state",
-        "2. Theory injection",
+        "2. Shock classification and injection",
         "3. First-wave reactions",
         "4. Graph cascades / butterfly effects",
-        "5. Unexpected outcomes",
+        "5. System stress concentration",
         "6. Final decision takeaway",
         "",
         "## Voiceover Script",
         "",
         *top_findings,
-        *unexpected,
+        *indicators,
         "",
         "## Data Visuals",
         "",
