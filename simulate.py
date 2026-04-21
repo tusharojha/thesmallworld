@@ -67,6 +67,16 @@ def _elapsed(start: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
+def _baseline_label(value: str) -> str:
+    mapping = {
+        "scenario-only": "static",
+        "medium": "medium",
+        "high": "high",
+        "low": "low",
+    }
+    return mapping.get(value, value or "n/a")
+
+
 # ── Dashboard state & rendering ───────────────────────────────────────────────
 class SimulationDashboard:
     def __init__(
@@ -402,7 +412,7 @@ class SimulationDashboard:
             f"\n  Elapsed: {_elapsed(self.start_time)}  │  "
             f"Emergent: {self.emergent_count}  │  "
             f"Lens: {self.decision_lens or 'general'}  │  "
-            f"Baseline: {self.baseline_confidence or 'n/a'}  │  "
+            f"Baseline: {_baseline_label(self.baseline_confidence)}  │  "
             f"Model: {model}  │  "
             f"Concurrency: {self._concurrency if hasattr(self, '_concurrency') else '—'}",
             style="dim",

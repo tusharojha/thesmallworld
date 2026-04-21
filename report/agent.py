@@ -46,7 +46,7 @@ def _render_executive_snapshot(log: SimulationLog, agents: list[AgentProfile], w
         f"- Scenario: `{log.theory}`",
         f"- Scenario class: {log.scenario_classification or 'strategic shock'}",
         f"- Decision lens: {log.decision_lens or 'general'}",
-        f"- Horizon: {log.steps_run} weeks",
+        f"- Horizon: {log.steps_run} {'week' if log.steps_run == 1 else 'weeks'}",
         f"- Represented population: ~{total_weight * 1_000_000:,.0f}",
         f"- Final polarization: {polarization:.2f}",
         f"- Final average economic stress: {avg_stress:.2f}",
@@ -76,6 +76,8 @@ def _render_baseline(log: SimulationLog) -> str:
     ]
 
     for raw_line in (log.current_world_state_summary or "No baseline summary recorded.").splitlines():
+        if raw_line.strip() == "Current World State Reconstruction":
+            continue
         if raw_line.startswith("- "):
             lines.append(raw_line)
         elif raw_line.startswith("  - "):
@@ -126,13 +128,19 @@ def _render_propagation(log: SimulationLog, agents: list[AgentProfile]) -> str:
         key=lambda c: (len(c.influenced_agents), len(c.edges)),
         reverse=True,
     )[:3]
-    lines.append("### Highest-Reach Cascades")
+    lines.append("### First-Wave Exposure")
     lines.append("")
     for cascade in ranked:
-        lines.append(
-            f"- `{cascade.origin_label}` on `{cascade.topic}` reached `{len(cascade.direct_recipients)}` direct "
-            f"and `{len(cascade.influenced_agents)}` total agents through `{len(cascade.edges)}` activated edges."
-        )
+        if cascade.edges:
+            lines.append(
+                f"- `{cascade.origin_label}` on `{cascade.topic}` reached `{len(cascade.direct_recipients)}` direct "
+                f"and `{len(cascade.influenced_agents)}` total agents through `{len(cascade.edges)}` activated edges."
+            )
+        else:
+            lines.append(
+                f"- `{cascade.origin_label}` on `{cascade.topic}` reached `{len(cascade.direct_recipients)}` direct recipients in the first wave, "
+                f"but did not generate second-order network relays within this horizon."
+            )
     lines.append("")
 
     amplifiers = _amplifier_nodes(log, agents)
@@ -141,6 +149,11 @@ def _render_propagation(log: SimulationLog, agents: list[AgentProfile]) -> str:
         lines.append("")
         for line in amplifiers[:5]:
             lines.append(f"- {line}")
+        lines.append("")
+    else:
+        lines.append("### Network Relay Assessment")
+        lines.append("")
+        lines.append("- No second-order graph relays cleared the cascade threshold in this run, so the observed impact remained mostly first-wave exposure rather than multi-hop amplification.")
         lines.append("")
 
     absorbers = _absorber_countries(log, agents)
@@ -238,10 +251,15 @@ def _compute_key_judgments(log: SimulationLog, agents: list[AgentProfile], ws: W
 
     if log.cascades:
         biggest = max(log.cascades, key=lambda c: (len(c.influenced_agents), len(c.edges)))
-        judgments.append(
-            f"The strongest propagation path was `{biggest.origin_label} -> {biggest.topic}`, "
-            f"reaching `{len(biggest.influenced_agents)}` agents through `{len(biggest.edges)}` explicit graph edges."
-        )
+        if biggest.edges:
+            judgments.append(
+                f"The strongest propagation path was `{biggest.origin_label} -> {biggest.topic}`, "
+                f"reaching `{len(biggest.influenced_agents)}` agents through `{len(biggest.edges)}` explicit graph edges."
+            )
+        else:
+            judgments.append(
+                f"The initial shock achieved broad first-wave reach on `{biggest.topic}`, but this short run did not yet produce measurable second-order graph amplification."
+            )
 
     amplifiers = _amplifier_nodes(log, agents)
     if amplifiers:

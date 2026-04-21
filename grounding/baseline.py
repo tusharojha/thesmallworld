@@ -301,6 +301,8 @@ def assess_current_world_state(current_state: CurrentWorldState | None) -> Basel
             inferred_state=["No inferred state available."],
         )
 
+    is_static_mode = any("Static world-state mode selected" in note for note in current_state.notes)
+
     observed_signal_count = 0
     countries_with_any_signal = 0
     observed_state: list[str] = []
@@ -356,7 +358,17 @@ def assess_current_world_state(current_state: CurrentWorldState | None) -> Basel
     total_countries = max(1, len(current_state.country_stats))
     country_coverage_ratio = countries_with_any_signal / total_countries
 
-    if country_coverage_ratio >= 0.8 and observed_signal_count >= 24:
+    if is_static_mode:
+        baseline_confidence = "scenario-only"
+        if not observed_state or observed_state == ["No observed state available."]:
+            observed_state = [
+                "Static archetype baseline only; live macro indicators were not loaded.",
+            ]
+        if inferred_state == ["No topic-specific discourse reconstruction was available."]:
+            inferred_state = [
+                "Scenario entered without live discourse reconstruction; simulation uses archetype defaults plus theory injection.",
+            ]
+    elif country_coverage_ratio >= 0.8 and observed_signal_count >= 24:
         baseline_confidence = "high"
     elif country_coverage_ratio >= 0.5 and observed_signal_count >= 12:
         baseline_confidence = "medium"
@@ -383,15 +395,22 @@ def format_current_world_state(current_state: CurrentWorldState | None) -> str:
     lines = [
         "Current World State Reconstruction",
         f"- Scenario class: {assessment.scenario_classification}",
-        (
+    ]
+    if assessment.baseline_confidence == "scenario-only":
+        lines.append(
+            "- Baseline confidence: scenario-only (static archetype mode without live observed-state reconstruction)"
+        )
+    else:
+        lines.append(
             f"- Baseline confidence: {assessment.baseline_confidence} "
             f"({assessment.country_coverage_ratio * 100:.0f}% country coverage, "
             f"{assessment.observed_signal_count} observed signals, "
             f"{assessment.inferred_signal_count} inferred signals)"
-        ),
+        )
+    lines.extend([
         f"- Source count: {assessment.source_count}",
         "- Observed state:",
-    ]
+    ])
     lines.extend(f"  - {line}" for line in assessment.observed_state[:6])
     lines.append("- Inferred state:")
     lines.extend(f"  - {line}" for line in assessment.inferred_state[:6])
