@@ -1191,6 +1191,10 @@ figure.fig .cap b { color: var(--ink); font-weight: 500; margin-right: 12px; }
 
   /* section heads + bodies already stack at 900px; make numbers smaller */
   section.paper { padding: 56px 0 28px; }
+  .sec-num,
+  .body-col .side { display: none; }
+  .sec-head,
+  .body-col { grid-template-columns: 1fr; gap: 12px; }
   .sec-title { font-size: clamp(26px, 7vw, 36px); }
   .sec-kicker { font-size: 17px; }
   .body-col .main p { font-size: 17px; }

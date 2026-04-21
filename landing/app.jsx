@@ -232,7 +232,7 @@ function DemoVideo({ url }) {
               )}
             </div>
             <figcaption className="cap">
-              <span><b>Fig. 0</b>{ytId ? "Click to play the demo." : "YouTube demo · embed your video URL in index.html"}</span>
+              <span><b>Fig. 0</b>{ytId ? "Click to play the demo." : "Demo video."}</span>
               <span>YouTube</span>
             </figcaption>
           </figure>
@@ -726,7 +726,7 @@ function PaperHead() {
         <span>April 2026</span>
       </div>
       <h1>
-        A current-state-grounded <em>world simulator</em> for shocks that won’t stay on the slide.
+        A world simulator for testing real-world theories across thousands of agents.
       </h1>
       <div className="byline">Baselines reconstructed. Leaders grounded. Cascades propagated. Briefs written.</div>
       <div className="affil">The Small World · Open-source, CLI-native</div>
