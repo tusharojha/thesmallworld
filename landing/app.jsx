@@ -677,11 +677,33 @@ function Colophon() {
 }
 
 // ============ MASTHEAD + TITLE ============
+// ORBIT logo mark — globe with agent dots on orbit
+function OrbitMark({ size = 36 }) {
+  return (
+    <svg viewBox="0 0 120 120" width={size} height={size} aria-hidden="true" style={{flexShrink:0}}>
+      <circle cx="60" cy="60" r="54" fill="none" stroke="var(--ink)" strokeWidth="0.7" strokeDasharray="1 3" opacity="0.55"/>
+      <circle cx="60" cy="60" r="28" fill="none" stroke="var(--ink)" strokeWidth="1.6"/>
+      <ellipse cx="60" cy="60" rx="28" ry="9" fill="none" stroke="var(--ink)" strokeWidth="0.9"/>
+      <ellipse cx="60" cy="60" rx="9"  ry="28" fill="none" stroke="var(--ink)" strokeWidth="0.9"/>
+      <ellipse cx="60" cy="60" rx="20" ry="28" fill="none" stroke="var(--ink)" strokeWidth="0.6" opacity="0.5"/>
+      <circle cx="60"  cy="6"  r="3.4" fill="var(--ocean)"/>
+      <circle cx="114" cy="60" r="2.6" fill="var(--forest)"/>
+      <circle cx="60"  cy="114" r="2.1" fill="var(--ochre)"/>
+      <circle cx="6"   cy="60" r="2.9" fill="var(--ink)"/>
+      <circle cx="98"  cy="22" r="1.9" fill="var(--ink)" opacity="0.5"/>
+      <circle cx="22"  cy="98" r="1.9" fill="var(--ink)" opacity="0.5"/>
+    </svg>
+  );
+}
+
 function Masthead() {
   return (
     <header className="masthead">
       <div className="wrap masthead-inner">
-        <div className="wordmark"><b>THE</b> <i>Small</i> <b>WORLD</b></div>
+        <a href="#" className="wordmark" aria-label="The Small World">
+          <OrbitMark size={34}/>
+          <span className="wm-text"><b>THE</b> <i>Small</i> <b>WORLD</b></span>
+        </a>
         <nav className="meta">
           <a href="#demo">Demo</a>
           <a href="#method">Method</a>
@@ -704,7 +726,7 @@ function PaperHead() {
         <span>April 2026</span>
       </div>
       <h1>
-        A current-state-grounded <em>simulator</em> for the shocks your memo is about to under-estimate.
+        A current-state-grounded <em>world simulator</em> for shocks that won’t stay on the slide.
       </h1>
       <div className="byline">Baselines reconstructed. Leaders grounded. Cascades propagated. Briefs written.</div>
       <div className="affil">The Small World · Open-source, CLI-native</div>

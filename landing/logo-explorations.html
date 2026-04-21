@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>The Small World · Logo explorations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  body { margin: 0; font-family: "EB Garamond", Georgia, serif; }
+  .mark { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 40px; box-sizing: border-box; }
+  .caption { position: absolute; bottom: 12px; left: 16px; right: 16px; font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #6b6a63; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#fafaf7">
+  <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="54" fill="none" stroke="#1a1a1a" stroke-width="0.6" stroke-dasharray="1 3" opacity="0.6"/>
+    <circle cx="60" cy="60" r="28" fill="none" stroke="#1a1a1a" stroke-width="1.4"/>
+    <ellipse cx="60" cy="60" rx="28" ry="9" fill="none" stroke="#1a1a1a" stroke-width="0.8"/>
+    <ellipse cx="60" cy="60" rx="9" ry="28" fill="none" stroke="#1a1a1a" stroke-width="0.8"/>
+    <circle cx="60" cy="6" r="3.2" fill="#2d5a7c"/>
+    <circle cx="114" cy="60" r="2.5" fill="#4a7c59"/>
+    <circle cx="60" cy="114" r="2" fill="#c9a961"/>
+    <circle cx="6" cy="60" r="2.8" fill="#1a1a1a"/>
+  </svg>
+</template>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="logo/design-canvas.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ========= LOGO MARKS =========
+
+// 1 — ORBIT: a small globe (dotted meridians) orbited by agent dots.
+// Classic, obvious, minimal. The "world" is literal.
+function Orbit({ size = 240, mono = false }) {
+  const ink = mono ? "#1a1a1a" : "#1a1a1a";
+  const ocean = mono ? "#1a1a1a" : "#2d5a7c";
+  const forest = mono ? "#1a1a1a" : "#4a7c59";
+  const ochre  = mono ? "#1a1a1a" : "#c9a961";
+  return (
+    <svg viewBox="0 0 120 120" width={size} height={size}>
+      {/* outer orbit */}
+      <circle cx="60" cy="60" r="54" fill="none" stroke={ink} strokeWidth="0.6" strokeDasharray="1 3" opacity="0.6"/>
+      {/* globe */}
+      <circle cx="60" cy="60" r="28" fill="none" stroke={ink} strokeWidth="1.2"/>
+      {/* equator + meridians */}
+      <ellipse cx="60" cy="60" rx="28" ry="9" fill="none" stroke={ink} strokeWidth="0.7"/>
+      <ellipse cx="60" cy="60" rx="9"  ry="28" fill="none" stroke={ink} strokeWidth="0.7"/>
+      <ellipse cx="60" cy="60" rx="20" ry="28" fill="none" stroke={ink} strokeWidth="0.5" opacity="0.5"/>
+      {/* agents on the orbit */}
+      <circle cx="60"  cy="6"  r="3.2" fill={ocean}/>
+      <circle cx="114" cy="60" r="2.5" fill={forest}/>
+      <circle cx="60"  cy="114" r="2"  fill={ochre}/>
+      <circle cx="6"   cy="60" r="2.8" fill={ink}/>
+      <circle cx="98"  cy="22" r="1.8" fill={ink} opacity="0.5"/>
+      <circle cx="22"  cy="98" r="1.8" fill={ink} opacity="0.5"/>
+    </svg>
+  );
+}
+
+// 2 — NODE: a small social graph. Plays directly to "agents who talk".
+function Nodes({ size = 240, mono = false }) {
+  const ink = "#1a1a1a";
+  const ocean = mono ? "#1a1a1a" : "#2d5a7c";
+  const forest = mono ? "#1a1a1a" : "#4a7c59";
+  const crimson = mono ? "#1a1a1a" : "#8b3a3a";
+  const ochre  = mono ? "#1a1a1a" : "#c9a961";
+  const pts = [
+    ["a", 60, 22, crimson, 4],
+    ["b", 22, 48, ocean,   3],
+    ["c", 98, 48, ocean,   3.5],
+    ["d", 40, 92, forest,  3],
+    ["e", 80, 92, forest,  2.5],
+    ["f", 60, 60, ochre,   3],
+  ];
+  const edges = [[0,1],[0,2],[0,5],[1,3],[1,5],[2,4],[2,5],[3,4],[3,5],[4,5]];
+  return (
+    <svg viewBox="0 0 120 120" width={size} height={size}>
+      {edges.map(([i,j], k) => (
+        <line key={k} x1={pts[i][1]} y1={pts[i][2]} x2={pts[j][1]} y2={pts[j][2]}
+              stroke={ink} strokeWidth="0.8" opacity="0.35"/>
+      ))}
+      {pts.map(([id, x, y, c, r]) => (
+        <g key={id}>
+          <circle cx={x} cy={y} r={r + 3} fill="#fafaf7"/>
+          <circle cx={x} cy={y} r={r} fill={c}/>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// 3 — SIGIL: a bold geometric monogram — a filled circle inside a thin
+// square (the "small" world, contained). Very mark-like, scales to favicon.
+function Sigil({ size = 240, mono = false }) {
+  const ink = "#1a1a1a";
+  const ocean = mono ? "#1a1a1a" : "#2d5a7c";
+  return (
+    <svg viewBox="0 0 120 120" width={size} height={size}>
+      <rect x="18" y="18" width="84" height="84" fill="none" stroke={ink} strokeWidth="1.4"/>
+      {/* tick marks like graph paper / latitudes */}
+      {[30,45,60,75,90].map(y => <line key={y} x1="18" y1={y} x2="22" y2={y} stroke={ink} strokeWidth="0.6"/>)}
+      {[30,45,60,75,90].map(y => <line key={"r"+y} x1="98" y1={y} x2="102" y2={y} stroke={ink} strokeWidth="0.6"/>)}
+      <circle cx="60" cy="60" r="22" fill={ocean}/>
+      <line x1="38" y1="60" x2="82" y2="60" stroke="#fafaf7" strokeWidth="0.7" opacity="0.8"/>
+      <circle cx="60" cy="60" r="22" fill="none" stroke={ink} strokeWidth="0.8" opacity="0.2"/>
+    </svg>
+  );
+}
+
+// 4 — WORDMARK: serif "tsw" with an italic globe dot. Type-forward.
+function Wordmark({ size = 260 }) {
+  return (
+    <svg viewBox="0 0 260 100" width={size} height={size * 100/260}>
+      <text x="8" y="70" fontFamily="EB Garamond" fontWeight="500" fontSize="72" fill="#1a1a1a" letterSpacing="-2">
+        the <tspan fontStyle="italic" fill="#2d5a7c">small</tspan> world
+      </text>
+      {/* dot over the 'i' in small becomes a tiny globe */}
+      <circle cx="140" cy="33" r="5" fill="none" stroke="#2d5a7c" strokeWidth="1"/>
+      <line x1="135" y1="33" x2="145" y2="33" stroke="#2d5a7c" strokeWidth="0.6"/>
+      <ellipse cx="140" cy="33" rx="2" ry="5" fill="none" stroke="#2d5a7c" strokeWidth="0.6"/>
+    </svg>
+  );
+}
+
+// 5 — MERIDIAN: a hairline globe wireframe, §-symbol tucked in the hemisphere.
+// Research-paper native.
+function Meridian({ size = 240, mono = false }) {
+  const ink = "#1a1a1a";
+  const ocean = mono ? "#1a1a1a" : "#2d5a7c";
+  return (
+    <svg viewBox="0 0 120 120" width={size} height={size}>
+      <circle cx="60" cy="60" r="40" fill="none" stroke={ink} strokeWidth="1"/>
+      <ellipse cx="60" cy="60" rx="40" ry="12" fill="none" stroke={ink} strokeWidth="0.6"/>
+      <ellipse cx="60" cy="60" rx="12" ry="40" fill="none" stroke={ink} strokeWidth="0.6"/>
+      <ellipse cx="60" cy="60" rx="26" ry="40" fill="none" stroke={ink} strokeWidth="0.5" opacity="0.5"/>
+      <ellipse cx="60" cy="60" rx="40" ry="26" fill="none" stroke={ink} strokeWidth="0.5" opacity="0.5"/>
+      <text x="60" y="70" textAnchor="middle" fontFamily="EB Garamond" fontStyle="italic" fontWeight="500" fontSize="32" fill={ocean}>§</text>
+    </svg>
+  );
+}
+
+// 6 — SMALL O: a filled "o" with a smaller inverted world inside — the
+// "small world" inside the letterform. Dense, identity-forward.
+function SmallO({ size = 240, mono = false }) {
+  const ink = "#1a1a1a";
+  const ocean = mono ? "#1a1a1a" : "#2d5a7c";
+  return (
+    <svg viewBox="0 0 120 120" width={size} height={size}>
+      <circle cx="60" cy="60" r="46" fill={ink}/>
+      <circle cx="60" cy="60" r="22" fill="#fafaf7"/>
+      <ellipse cx="60" cy="60" rx="22" ry="7" fill="none" stroke={ocean} strokeWidth="0.9"/>
+      <ellipse cx="60" cy="60" rx="7" ry="22" fill="none" stroke={ocean} strokeWidth="0.9"/>
+      <circle cx="60" cy="60" r="22" fill="none" stroke={ocean} strokeWidth="1"/>
+    </svg>
+  );
+}
+
+// 7 — LOCKUP: mark + wordmark horizontally, the masthead-ready version.
+function Lockup({ Mark, label = "the small world" }) {
+  return (
+    <div style={{display:"flex", alignItems:"center", gap:20}}>
+      <Mark size={72}/>
+      <div style={{display:"flex", flexDirection:"column", lineHeight:1}}>
+        <div style={{fontFamily:"EB Garamond", fontSize:30, fontWeight:500, letterSpacing:"-0.02em", color:"#1a1a1a"}}>
+          the <em style={{color:"#2d5a7c", fontWeight:400}}>small</em> world
+        </div>
+        <div style={{fontFamily:"JetBrains Mono", fontSize:10, letterSpacing:"0.18em", color:"#6b6a63", textTransform:"uppercase", marginTop:6}}>
+          Decision intelligence · since 2026
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 8 — FAVICON strip
+function Favicons({ Mark }) {
+  return (
+    <div style={{display:"flex", alignItems:"center", gap:16}}>
+      {[16,24,32,48,64].map(s => (
+        <div key={s} style={{display:"flex", flexDirection:"column", alignItems:"center", gap:6}}>
+          <div style={{width:s, height:s, display:"flex", alignItems:"center", justifyContent:"center"}}>
+            <Mark size={s}/>
+          </div>
+          <div style={{fontFamily:"JetBrains Mono", fontSize:9, color:"#6b6a63"}}>{s}px</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// frame helper
+const Frame = ({ children, bg = "#fafaf7", caption, name }) => (
+  <div style={{position:"relative", width:"100%", height:"100%", background:bg, display:"flex", alignItems:"center", justifyContent:"center"}}>
+    {children}
+    <div className="caption"><span>{name}</span><span>{caption}</span></div>
+  </div>
+);
+
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="marks" title="Primary marks" subtitle="Six directions — pick one, we'll refine it into the final.">
+        <DCArtboard id="orbit"    label="01 · Orbit"     width={300} height={300}><Frame name="ORBIT" caption="Agents around a world">     <Orbit/></Frame></DCArtboard>
+        <DCArtboard id="nodes"    label="02 · Graph"     width={300} height={300}><Frame name="GRAPH" caption="Small-world network">       <Nodes/></Frame></DCArtboard>
+        <DCArtboard id="sigil"    label="03 · Sigil"     width={300} height={300}><Frame name="SIGIL" caption="Contained world">           <Sigil/></Frame></DCArtboard>
+        <DCArtboard id="meridian" label="04 · Meridian"  width={300} height={300}><Frame name="MERIDIAN" caption="Section § in a wireframe"><Meridian/></Frame></DCArtboard>
+        <DCArtboard id="smallo"   label="05 · Small O"   width={300} height={300}><Frame name="SMALL O" caption="World inside an o">       <SmallO/></Frame></DCArtboard>
+        <DCArtboard id="word"     label="06 · Wordmark"  width={520} height={300}><Frame name="WORDMARK" caption="Type-forward; 'small' set in italic"><Wordmark/></Frame></DCArtboard>
+      </DCSection>
+
+      <DCSection id="lockups" title="Horizontal lockups" subtitle="Mark + wordmark as it would appear in the masthead.">
+        <DCArtboard id="lk-orbit"    label="Orbit · lockup"    width={520} height={200}><Frame name="LOCKUP · 01"><Lockup Mark={Orbit}/></Frame></DCArtboard>
+        <DCArtboard id="lk-nodes"    label="Graph · lockup"    width={520} height={200}><Frame name="LOCKUP · 02"><Lockup Mark={Nodes}/></Frame></DCArtboard>
+        <DCArtboard id="lk-sigil"    label="Sigil · lockup"    width={520} height={200}><Frame name="LOCKUP · 03"><Lockup Mark={Sigil}/></Frame></DCArtboard>
+        <DCArtboard id="lk-meridian" label="Meridian · lockup" width={520} height={200}><Frame name="LOCKUP · 04"><Lockup Mark={Meridian}/></Frame></DCArtboard>
+        <DCArtboard id="lk-smallo"   label="Small O · lockup"  width={520} height={200}><Frame name="LOCKUP · 05"><Lockup Mark={SmallO}/></Frame></DCArtboard>
+      </DCSection>
+
+      <DCSection id="favicons" title="Favicons · monochrome reduction" subtitle="Can the mark survive 16px?">
+        <DCArtboard id="fav-orbit"    label="Orbit"    width={520} height={140}><Frame name="16 → 64"><Favicons Mark={(p)=><Orbit {...p} mono/>}/></Frame></DCArtboard>
+        <DCArtboard id="fav-nodes"    label="Graph"    width={520} height={140}><Frame name="16 → 64"><Favicons Mark={(p)=><Nodes {...p} mono/>}/></Frame></DCArtboard>
+        <DCArtboard id="fav-sigil"    label="Sigil"    width={520} height={140}><Frame name="16 → 64"><Favicons Mark={(p)=><Sigil {...p} mono/>}/></Frame></DCArtboard>
+        <DCArtboard id="fav-meridian" label="Meridian" width={520} height={140}><Frame name="16 → 64"><Favicons Mark={(p)=><Meridian {...p} mono/>}/></Frame></DCArtboard>
+        <DCArtboard id="fav-smallo"   label="Small O"  width={520} height={140}><Frame name="16 → 64"><Favicons Mark={(p)=><SmallO {...p} mono/>}/></Frame></DCArtboard>
+      </DCSection>
+
+      <DCSection id="darks" title="On ink background" subtitle="For the terminal / dark sections.">
+        <DCArtboard id="d-orbit"    label="Orbit"    width={300} height={300} style={{background:"#0e1417"}}>
+          <div style={{width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center", background:"#0e1417"}}>
+            <svg viewBox="0 0 120 120" width={220} height={220}>
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#d8d2c0" strokeWidth="0.6" strokeDasharray="1 3" opacity="0.5"/>
+              <circle cx="60" cy="60" r="28" fill="none" stroke="#d8d2c0" strokeWidth="1.2"/>
+              <ellipse cx="60" cy="60" rx="28" ry="9" fill="none" stroke="#d8d2c0" strokeWidth="0.7"/>
+              <ellipse cx="60" cy="60" rx="9"  ry="28" fill="none" stroke="#d8d2c0" strokeWidth="0.7"/>
+              <circle cx="60"  cy="6"  r="3.2" fill="#7fb3c9"/>
+              <circle cx="114" cy="60" r="2.5" fill="#a8c796"/>
+              <circle cx="60"  cy="114" r="2"  fill="#c9a961"/>
+              <circle cx="6"   cy="60" r="2.8" fill="#d8d2c0"/>
+            </svg>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="d-word" label="Wordmark · inverse" width={520} height={300} style={{background:"#0e1417"}}>
+          <div style={{width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center", background:"#0e1417"}}>
+            <div style={{fontFamily:"EB Garamond", fontSize:52, color:"#d8d2c0", letterSpacing:"-0.02em"}}>
+              the <em style={{color:"#7fb3c9", fontWeight:400}}>small</em> world
+            </div>
+          </div>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
